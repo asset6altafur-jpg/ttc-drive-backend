@@ -6,36 +6,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // CORS configuration
-// app.use(cors());
+app.use(cors());
 app.use(express.json());
-// ====== API PROTECTION MIDDLEWARE ======
-const crypto = require("crypto");
-
-app.use("/api", (req, res, next) => {
-    const signature = req.headers["x-signature"];
-    const timestamp = req.headers["x-timestamp"];
-
-    if (!signature || !timestamp) {
-        return res.status(401).json({ error: "Unauthorized" });
-    }
-
-    const now = Date.now();
-    if (Math.abs(now - timestamp) > 60_000) {
-        return res.status(401).json({ error: "Request expired" });
-    }
-
-    const expectedSignature = crypto
-        .createHmac("sha256", process.env.API_SECRET)
-        .update(req.originalUrl + timestamp)
-        .digest("hex");
-
-    if (signature !== expectedSignature) {
-        return res.status(403).json({ error: "Invalid signature" });
-    }
-
-    next();
-});
-
 
 // Configuration for BOTH folders
 const CONFIG = {
@@ -56,18 +28,6 @@ let videoCache = {
 };
 
 // ========== COMMON FUNCTIONS ==========
-
-
-// api secure start 
-
-
-
-
-// api secure end 
-
-
-
-
 
 // MIME type mapping
 const MIME_TYPE_MAP = {
