@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // CORS configuration
-// app.use(cors()); 
+app.use(cors()); 
 app.use(express.json());
 
 // Configuration for BOTH folders
@@ -16,7 +16,8 @@ const CONFIG = {
     API_KEY: process.env.API_KEY,
     FILE_FOLDER_ID: process.env.FILE_FOLDER_ID, // আপনার File Folder
     VIDEO_FOLDER_ID: process.env.VIDEO_FOLDER_ID, // আপনার Video Folder ID
-    CACHE_DURATION: 60000
+    CACHE_DURATION: 60000,
+    FRONTEND_API_KEY:process.env.FRONTEND_API_KEY
 };
 // Cache objects for both
 let fileCache = {
@@ -108,41 +109,7 @@ function formatDuration(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-// Allowed origins
-const allowedOrigins = [
-  'http://localhost:3000',           // React dev server
-  'http://127.0.0.1:5500',           // Live server HTML
-  'https://inspiring-khapse-df652b.netlify.app' // Production Netlify
-];
 
-// ======= Middleware to verify Origin =======
-function verifyOrigin(req, res, next) {
-  const origin = req.headers.origin;
-
-  // Allow null origin for Live Server in development
-  if (
-    allowedOrigins.includes(origin) ||
-    (process.env.NODE_ENV !== 'production' && origin === null)
-  ) {
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader(
-      'Access-Control-Allow-Headers',
-      'Content-Type, Authorization, x-api-key'
-    );
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
-    return next();
-  }
-
-  return res.status(403).json({ success: false, error: 'Origin not allowed' });
-}
-
-// ======= Middleware to verify API Key =======
-function verifyApiKey(req, res, next) {
-  const key = req.headers['x-api-key'];
-  if (key && key === process.env.FRONTEND_API_KEY) return next();
-  return res.status(401).json({ success: false, error: 'Unauthorized' });
-}
 
 
 
@@ -153,7 +120,7 @@ function verifyApiKey(req, res, next) {
 
 // 1. GET ALL FILES
 // Only requests from allowed origins can access
-app.get('/api/files', verifyOrigin,verifyApiKey , async (req, res) => {
+app.get('/api/files', async (req, res) => {
   try {
     const now = Date.now();
     if (fileCache.data && fileCache.timestamp && (now - fileCache.timestamp) < CONFIG.CACHE_DURATION) {
