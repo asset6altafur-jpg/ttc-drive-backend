@@ -1,6 +1,8 @@
 const express = require('express');
+require('dotenv').config();
 const axios = require('axios');
 const cors = require('cors');
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -106,105 +108,117 @@ function formatDuration(seconds) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+// Allowed origins
+const allowedOrigins = [
+  'http://localhost:3000',           // React dev server
+  'http://127.0.0.1:5500',           // Live server HTML
+  'https://inspiring-khapse-df652b.netlify.app' // Production Netlify
+];
+
+// Middleware to check origin
+function verifyOrigin(req, res, next) {
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Authorization, x-api-key'
+    );
+
+    // Preflight request
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    return next();
+  }
+
+  // Block all other origins
+  return res.status(403).json({ success: false, error: 'Origin not allowed' });
+}
+
+
+
+
+
 // ========== FILE ENDPOINTS (Existing) ==========
 
 // 1. GET ALL FILES
-app.get('/api/files', async (req, res) => {
-    try {
-        const now = Date.now();
-        if (fileCache.data && fileCache.timestamp && (now - fileCache.timestamp) < CONFIG.CACHE_DURATION) {
-            return res.json(fileCache.data);
-        }
-
-        console.log('🔄 Fetching files from Google Drive...');
-        
-        const url = 'https://www.googleapis.com/drive/v3/files';
-        const params = {
-            q: `'${CONFIG.FILE_FOLDER_ID}' in parents and trashed = false`,
-            key: CONFIG.API_KEY,
-            fields: 'files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink)',
-            orderBy: 'createdTime desc',
-            pageSize: 100
-        };
-
-        const response = await axios.get(url, { params });
-        
-        if (!response.data.files) {
-            return res.json({
-                success: true,
-                count: 0,
-                files: [],
-                categories: {},
-                message: 'No files found'
-            });
-        }
-
-        const files = response.data.files.map(file => {
-            const fileInfo = getFileInfo(file.mimeType);
-            
-            return {
-                id: file.id,
-                name: file.name,
-                type: file.mimeType,
-                size: file.size ? parseInt(file.size) : 0,
-                sizeFormatted: formatFileSize(file.size),
-                createdTime: file.createdTime,
-                modifiedTime: file.modifiedTime,
-                viewUrl: `https://drive.google.com/file/d/${file.id}/preview`,
-                downloadUrl: `https://drive.google.com/uc?export=download&id=${file.id}`,
-                directLink: file.webContentLink,
-                iconClass: fileInfo.class,
-                iconName: fileInfo.icon,
-                category: fileInfo.category,
-                thumbnail: file.thumbnailLink || null,
-                isVideo: file.mimeType.startsWith('video/')
-            };
-        });
-
-        // Filter out videos (we'll handle them separately)
-        const nonVideoFiles = files.filter(file => !file.isVideo);
-        
-        const categories = {};
-        nonVideoFiles.forEach(file => {
-            if (!categories[file.category]) {
-                categories[file.category] = { count: 0, files: [] };
-            }
-            categories[file.category].count++;
-            categories[file.category].files.push(file);
-        });
-
-        const result = {
-            success: true,
-            count: nonVideoFiles.length,
-            categoriesCount: Object.keys(categories).length,
-            files: nonVideoFiles,
-            categories: categories,
-            lastUpdated: new Date().toISOString(),
-            type: 'files'
-        };
-
-        fileCache = { data: result, timestamp: now };
-        
-        console.log(`✅ Successfully fetched ${nonVideoFiles.length} files`);
-        res.json(result);
-
-    } catch (error) {
-        console.error('❌ Error fetching files:', error.message);
-        
-        if (fileCache.data) {
-            return res.json({
-                ...fileCache.data,
-                cached: true,
-                error: 'Using cached data'
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            error: 'Failed to fetch files'
-        });
+// Only requests from allowed origins can access
+app.get('/api/files', verifyOrigin, async (req, res) => {
+  try {
+    const now = Date.now();
+    if (fileCache.data && fileCache.timestamp && (now - fileCache.timestamp) < CONFIG.CACHE_DURATION) {
+      return res.json(fileCache.data);
     }
+
+    console.log('🔄 Fetching files from Google Drive...');
+
+    const url = 'https://www.googleapis.com/drive/v3/files';
+    const params = {
+      q: `'${CONFIG.FILE_FOLDER_ID}' in parents and trashed = false`,
+      key: CONFIG.API_KEY,
+      fields: 'files(id, name, mimeType, size, createdTime, modifiedTime, webViewLink, webContentLink, thumbnailLink)',
+      orderBy: 'createdTime desc',
+      pageSize: 100
+    };
+
+    const response = await axios.get(url, { params });
+
+    const files = response.data.files.map(file => {
+      const fileInfo = getFileInfo(file.mimeType);
+
+      return {
+        id: file.id,
+        name: file.name,
+        type: file.mimeType,
+        size: file.size ? parseInt(file.size) : 0,
+        sizeFormatted: formatFileSize(file.size),
+        createdTime: file.createdTime,
+        modifiedTime: file.modifiedTime,
+        viewUrl: `https://drive.google.com/file/d/${file.id}/preview`,
+        downloadUrl: `https://drive.google.com/uc?export=download&id=${file.id}`,
+        directLink: file.webContentLink,
+        iconClass: fileInfo.class,
+        iconName: fileInfo.icon,
+        category: fileInfo.category,
+        thumbnail: file.thumbnailLink || null,
+        isVideo: file.mimeType.startsWith('video/')
+      };
+    });
+
+    const nonVideoFiles = files.filter(file => !file.isVideo);
+
+    const categories = {};
+    nonVideoFiles.forEach(file => {
+      if (!categories[file.category]) categories[file.category] = { count: 0, files: [] };
+      categories[file.category].count++;
+      categories[file.category].files.push(file);
+    });
+
+    const result = {
+      success: true,
+      count: nonVideoFiles.length,
+      categoriesCount: Object.keys(categories).length,
+      files: nonVideoFiles,
+      categories: categories,
+      lastUpdated: new Date().toISOString(),
+      type: 'files'
+    };
+
+    fileCache = { data: result, timestamp: now };
+    res.json(result);
+
+  } catch (error) {
+    console.error('❌ Error fetching files:', error.message);
+
+    if (fileCache.data) {
+      return res.json({ ...fileCache.data, cached: true, error: 'Using cached data' });
+    }
+
+    res.status(500).json({ success: false, error: 'Failed to fetch files' });
+  }
 });
+
 
 // ========== VIDEO ENDPOINTS (New) ==========
 
